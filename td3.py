@@ -129,7 +129,8 @@ class TD3(object):
             # next_state = torch.FloatTensor(new_state_batch).to(device)
             # done = torch.FloatTensor(1 - done_batch).to(device)
             # reward = torch.FloatTensor(reward_batch).to(device)
-
+            done_batch = done_batch.unsqueeze(1)
+            reward_batch = reward_batch.unsqueeze(1)
             # Select action according to policy and add clipped noise
             # noise = torch.FloatTensor(original_action).data.normal_(0, policy_noise).to(device)
             noise = action_batch.data.normal_(0, policy_noise).to(device)
@@ -307,3 +308,7 @@ def main(task_name):
     plt.ylabel('Score')
     plt.xlabel('Episodes #')
     plt.show()
+
+
+if __name__ == '__main__':
+    main("BipedalWalker-v3")
