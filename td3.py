@@ -293,7 +293,7 @@ def main(task_name, load_model, directory):
     plt.show()
 
 
-if __name__ == '__main__':
+def run_all():
     model_path = "combo_model"
     if not Path(model_path).is_dir():
         import os
@@ -303,3 +303,6 @@ if __name__ == '__main__':
     main("BipedalWalker-v3", load_model=False, directory=model_path)
     main("BipedalWalkerHardcore-v3", load_model=True, directory=model_path)
 
+
+if __name__ == '__main__':
+    run_all()
