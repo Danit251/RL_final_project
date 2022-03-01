@@ -1,17 +1,56 @@
 import itertools
-
+import torch.nn as nn
 import gym
 import numpy as np
 import torch
 from algorithm import Algo
 from buffer import ReplayBuffer
-from models import DQNModel
 from utils import OrnsteinUhlenbeckActionNoise, hard_update
 
-MAX_REPLAY_BUFFER = 100000
+
 
 import os
 os.environ["SDL_VIDEODRIVER"] = "dummy"
+
+
+class DQNModel(nn.Module):
+
+    def __init__(self, state_dim, action_dim, hidden_dim):
+        """
+        :param state_dim: Dimension of input state (int)
+        :param action_dim: Dimension of output action (int)
+        :return:
+        """
+        super(DQNModel, self).__init__()
+
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.hidden_dim = hidden_dim
+
+        self.fc1 = nn.Linear(state_dim, self.hidden_dim)
+        self.fc2 = nn.Linear(self.hidden_dim, int(self.hidden_dim/2))
+        self.fc3 = nn.Linear(int(self.hidden_dim / 2), action_dim)
+
+        self.leaky_relu = nn.LeakyReLU(0.1)
+
+        nn.init.xavier_uniform_(self.fc1.weight)
+        nn.init.xavier_uniform_(self.fc2.weight)
+        nn.init.xavier_uniform_(self.fc3.weight)
+
+    def forward(self, state):
+        """
+        returns policy function Pi(s) obtained from actor network
+        this function is a gaussian prob distribution for all actions
+        with mean lying in (-1,1) and sigma lying in (0,1)
+        The sampled action can , then later be rescaled
+        :param state: Input state (Torch Variable : [n,state_dim] )
+        :return: Output action (Torch Variable: [n,action_dim] )
+        """
+        x = self.leaky_relu(self.fc1(state))
+        x = self.leaky_relu(self.fc2(x))
+        action = self.fc3(x)
+
+        return action
 
 
 class DQN(Algo):
@@ -132,7 +171,7 @@ def main(velocity=None):
     rng = np.random.default_rng(seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     noise = OrnsteinUhlenbeckActionNoise(action_dim=1, rng=rng, theta=0.005, sigma=0.005)
-    buffer = ReplayBuffer(MAX_REPLAY_BUFFER, device, rng)
+    buffer = ReplayBuffer(device, rng)
     algo = DQN(env, action_space, buffer, device, noise, apply_noise=False, velocity=velocity)
     algo.run_all_episodes()
 

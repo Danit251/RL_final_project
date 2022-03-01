@@ -1,5 +1,4 @@
 import numpy as np
-import torch
 import gym
 import time
 from collections import deque
@@ -7,6 +6,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from buffer import ReplayBuffer
 
 start_timestep = 1e4
 std_noise = 0.1
@@ -68,33 +68,33 @@ class Critic(nn.Module):
         return x1
 
 
-class ReplayBuffer(object):
-    def __init__(self, gtr, max_size=1e6):
-        self.storage = []
-        self.max_size = max_size
-        self.ptr = 0
-        self.gtr = gtr
-
-    def add(self, data):
-        if len(self.storage) == self.max_size:
-            self.storage[int(self.ptr)] = data
-            self.ptr = (self.ptr + 1) % self.max_size
-        else:
-            self.storage.append(data)
-
-    def sample(self, batch_size):
-        ind = self.gtr.integers(low=0, high=len(self.storage), size=batch_size)
-        x, y, u, r, d = [], [], [], [], []
-
-        for i in ind:
-            X, Y, U, R, D = self.storage[i]
-            x.append(np.array(X, copy=False))
-            y.append(np.array(Y, copy=False))
-            u.append(np.array(U, copy=False))
-            r.append(np.array(R, copy=False))
-            d.append(np.array(D, copy=False))
-
-        return np.array(x), np.array(y), np.array(u), np.array(r).reshape(-1, 1), np.array(d).reshape(-1, 1)
+# class ReplayBuffer(object):
+#     def __init__(self, gtr, max_size=1e6):
+#         self.storage = []
+#         self.max_size = max_size
+#         self.ptr = 0
+#         self.gtr = gtr
+#
+#     def add(self, data):
+#         if len(self.storage) == self.max_size:
+#             self.storage[int(self.ptr)] = data
+#             self.ptr = (self.ptr + 1) % self.max_size
+#         else:
+#             self.storage.append(data)
+#
+#     def sample(self, batch_size):
+#         ind = self.gtr.integers(low=0, high=len(self.storage), size=batch_size)
+#         x, y, u, r, d = [], [], [], [], []
+#
+#         for i in ind:
+#             X, Y, U, R, D = self.storage[i]
+#             x.append(np.array(X, copy=False))
+#             y.append(np.array(Y, copy=False))
+#             u.append(np.array(U, copy=False))
+#             r.append(np.array(R, copy=False))
+#             d.append(np.array(D, copy=False))
+#
+#         return np.array(x), np.array(y), np.array(u), np.array(r).reshape(-1, 1), np.array(d).reshape(-1, 1)
 
 
 class TD3(object):
@@ -121,26 +121,28 @@ class TD3(object):
         for it in range(iterations):
 
             # Sample replay buffer
-            state, next_state, action, reward, done = replay_buffer.sample(batch_size)
-            original_action = action.copy()
-            state = torch.FloatTensor(state).to(device)
-            action = torch.FloatTensor(action).to(device)
-            next_state = torch.FloatTensor(next_state).to(device)
-            done = torch.FloatTensor(1 - done).to(device)
-            reward = torch.FloatTensor(reward).to(device)
+            state_batch, action_batch, reward_batch, new_state_batch, done_batch = replay_buffer.sample(batch_size)
+
+            original_action = action_batch.copy()
+            # state = torch.FloatTensor(state_batch).to(device)
+            # action = torch.FloatTensor(action_batch).to(device)
+            # next_state = torch.FloatTensor(new_state_batch).to(device)
+            # done = torch.FloatTensor(1 - done_batch).to(device)
+            # reward = torch.FloatTensor(reward_batch).to(device)
 
             # Select action according to policy and add clipped noise
-            noise = torch.FloatTensor(original_action).data.normal_(0, policy_noise).to(device)
+            # noise = torch.FloatTensor(original_action).data.normal_(0, policy_noise).to(device)
+            noise = original_action.data.normal_(0, policy_noise).to(device)
             noise = noise.clamp(-noise_clip, noise_clip)
-            next_action = (self.actor_target(next_state) + noise).clamp(-self.max_action, self.max_action)
+            next_action = (self.actor_target(new_state_batch) + noise).clamp(-self.max_action, self.max_action)
 
             # Compute the target Q value
-            target_Q1, target_Q2 = self.critic_target(next_state, next_action)
+            target_Q1, target_Q2 = self.critic_target(new_state_batch, next_action)
             target_Q = torch.min(target_Q1, target_Q2)
-            target_Q = reward + (done * discount * target_Q).detach()
+            target_Q = reward_batch + (done_batch * discount * target_Q).detach()
 
             # Get current Q estimates
-            current_Q1, current_Q2 = self.critic(state, action)
+            current_Q1, current_Q2 = self.critic(state_batch, action_batch)
 
             # Compute critic loss
             critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
@@ -154,7 +156,7 @@ class TD3(object):
             if it % policy_freq == 0:
 
                 # Compute actor loss
-                actor_loss = -self.critic.Q1(state, self.actor(state)).mean()
+                actor_loss = -self.critic.Q1(state_batch, self.actor(state_batch)).mean()
                 # Optimize the actor
                 self.actor_optimizer.zero_grad()
                 actor_loss.backward()
@@ -181,7 +183,7 @@ def td3_train(agent, env, rng, action_dim, n_episodes=3600, save_every=10):
     avg_scores_array = []
 
     time_start = time.time()  # Init start time
-    replay_buf = ReplayBuffer(rng)  # Init ReplayBuffer
+    replay_buf = ReplayBuffer(device, rng)  # Init ReplayBuffer
 
     timestep_after_last_save = 0
     total_timesteps = 0
@@ -217,7 +219,7 @@ def td3_train(agent, env, rng, action_dim, n_episodes=3600, save_every=10):
             total_reward += reward  # full episode reward
 
             # Store every timestep in replay buffer
-            replay_buf.add((state, new_state, action, reward, done_bool))
+            replay_buf.add(state, action, reward, new_state, done_bool)
             state = new_state
 
             timestep += 1
@@ -240,7 +242,6 @@ def td3_train(agent, env, rng, action_dim, n_episodes=3600, save_every=10):
 
         agent.train(replay_buf, timestep)
 
-        # Save episode if more than save_every=5000 timesteps
         if timestep_after_last_save >= save_every:
             timestep_after_last_save %= save_every
             save(agent, 'checkpnt_seed_88', 'Models')
@@ -281,7 +282,8 @@ def play(env, agent, n_episodes):
 
 
 def main(task_name):
-    env = gym.make(task_name)#'BipedalWalkerHardcore-v3'/BipedalWalker-v3
+    # 'BipedalWalkerHardcore-v3'/BipedalWalker-v3
+    env = gym.make(task_name)
     # Set seeds
     seed = 2022
     env.action_space.np_random.seed(seed)
