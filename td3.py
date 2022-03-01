@@ -123,7 +123,7 @@ class TD3(object):
             # Sample replay buffer
             state_batch, action_batch, reward_batch, new_state_batch, done_batch = replay_buffer.sample(batch_size)
 
-            original_action = action_batch.copy()
+            # original_action = action_batch.copy()
             # state = torch.FloatTensor(state_batch).to(device)
             # action = torch.FloatTensor(action_batch).to(device)
             # next_state = torch.FloatTensor(new_state_batch).to(device)
@@ -132,7 +132,7 @@ class TD3(object):
 
             # Select action according to policy and add clipped noise
             # noise = torch.FloatTensor(original_action).data.normal_(0, policy_noise).to(device)
-            noise = original_action.data.normal_(0, policy_noise).to(device)
+            noise = action_batch.data.normal_(0, policy_noise).to(device)
             noise = noise.clamp(-noise_clip, noise_clip)
             next_action = (self.actor_target(new_state_batch) + noise).clamp(-self.max_action, self.max_action)
 
