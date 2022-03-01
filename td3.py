@@ -68,35 +68,6 @@ class Critic(nn.Module):
         return x1
 
 
-# class ReplayBuffer(object):
-#     def __init__(self, gtr, max_size=1e6):
-#         self.storage = []
-#         self.max_size = max_size
-#         self.ptr = 0
-#         self.gtr = gtr
-#
-#     def add(self, data):
-#         if len(self.storage) == self.max_size:
-#             self.storage[int(self.ptr)] = data
-#             self.ptr = (self.ptr + 1) % self.max_size
-#         else:
-#             self.storage.append(data)
-#
-#     def sample(self, batch_size):
-#         ind = self.gtr.integers(low=0, high=len(self.storage), size=batch_size)
-#         x, y, u, r, d = [], [], [], [], []
-#
-#         for i in ind:
-#             X, Y, U, R, D = self.storage[i]
-#             x.append(np.array(X, copy=False))
-#             y.append(np.array(Y, copy=False))
-#             u.append(np.array(U, copy=False))
-#             r.append(np.array(R, copy=False))
-#             d.append(np.array(D, copy=False))
-#
-#         return np.array(x), np.array(y), np.array(u), np.array(r).reshape(-1, 1), np.array(d).reshape(-1, 1)
-
-
 class TD3(object):
     def __init__(self, state_dim, action_dim, max_action):
         self.actor = Actor(state_dim, action_dim, max_action).to(device)
@@ -123,16 +94,9 @@ class TD3(object):
             # Sample replay buffer
             state_batch, action_batch, reward_batch, new_state_batch, done_batch = replay_buffer.sample(batch_size)
 
-            # original_action = action_batch.copy()
-            # state = torch.FloatTensor(state_batch).to(device)
-            # action = torch.FloatTensor(action_batch).to(device)
-            # next_state = torch.FloatTensor(new_state_batch).to(device)
-            # done = torch.FloatTensor(1 - done_batch).to(device)
-            # reward = torch.FloatTensor(reward_batch).to(device)
             done_batch = done_batch.unsqueeze(1)
             reward_batch = reward_batch.unsqueeze(1)
-            # Select action according to policy and add clipped noise
-            # noise = torch.FloatTensor(original_action).data.normal_(0, policy_noise).to(device)
+
             noise = action_batch.data.normal_(0, policy_noise).to(device)
             noise = noise.clamp(-noise_clip, noise_clip)
             next_action = (self.actor_target(new_state_batch) + noise).clamp(-self.max_action, self.max_action)
