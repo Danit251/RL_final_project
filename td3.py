@@ -260,6 +260,7 @@ def main(task_name, load_model, directory):
     env = gym.make(task_name)
     # Set seeds
     seed = 2022
+    env.seed(seed)
     env.action_space.np_random.seed(seed)
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)

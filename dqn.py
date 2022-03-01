@@ -160,9 +160,9 @@ class DQN(Algo):
 
 def main(velocity=None):
     seed = 42
-
     action_space = {i: v for i, v in enumerate(itertools.product([0, 0.3, 0.6, 0.9], [0, 0.6, -0.6, 0.9, -0.9]))}
     env = gym.make("LunarLanderContinuous-v2")
+    env.seed(seed)
     env.action_space.np_random.seed(seed)
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
