@@ -6,9 +6,6 @@ import torch
 from algorithm import Algo
 from buffer import ReplayBuffer
 from utils import OrnsteinUhlenbeckActionNoise, hard_update
-
-
-
 import os
 os.environ["SDL_VIDEODRIVER"] = "dummy"
 
