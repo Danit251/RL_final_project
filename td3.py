@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from buffer import ReplayBuffer
+from pathlib import Path
 
 start_timestep = 1e4
 std_noise = 0.1
@@ -19,9 +20,9 @@ class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, max_action):
         super(Actor, self).__init__()
 
-        self.l1 = nn.Linear(state_dim, 400)
-        self.l2 = nn.Linear(400, 300)
-        self.l3 = nn.Linear(300, action_dim)
+        self.l1 = nn.Linear(state_dim, 512)
+        self.l2 = nn.Linear(512, 256)
+        self.l3 = nn.Linear(256, action_dim)
 
         self.max_action = max_action
 
@@ -38,14 +39,14 @@ class Critic(nn.Module):
         super(Critic, self).__init__()
 
         # Q1 architecture
-        self.l1 = nn.Linear(state_dim + action_dim, 400)
-        self.l2 = nn.Linear(400, 300)
-        self.l3 = nn.Linear(300, 1)
+        self.l1 = nn.Linear(state_dim + action_dim, 512)
+        self.l2 = nn.Linear(512, 256)
+        self.l3 = nn.Linear(256, 1)
 
         # Q2 architecture
-        self.l4 = nn.Linear(state_dim + action_dim, 400)
-        self.l5 = nn.Linear(400, 300)
-        self.l6 = nn.Linear(300, 1)
+        self.l4 = nn.Linear(state_dim + action_dim, 512)
+        self.l5 = nn.Linear(512, 256)
+        self.l6 = nn.Linear(256, 1)
 
     def forward(self, x, u):
         xu = torch.cat([x, u], 1)
@@ -135,14 +136,14 @@ class TD3(object):
                     target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
 
 
-def save(agent, filename, directory):
-    torch.save(agent.actor.state_dict(), '%s/%s_actor.pth' % (directory, filename))
-    torch.save(agent.critic.state_dict(), '%s/%s_critic.pth' % (directory, filename))
-    torch.save(agent.actor_target.state_dict(), '%s/%s_actor_t.pth' % (directory, filename))
-    torch.save(agent.critic_target.state_dict(), '%s/%s_critic_t.pth' % (directory, filename))
+def save(agent, directory, filename):
+    torch.save(agent.actor.state_dict(), f'{directory}/{filename}_actor.pth')
+    torch.save(agent.critic.state_dict(), f'{directory}/{filename}_critic.pth')
+    torch.save(agent.actor_target.state_dict(), f'{directory}/{filename}_actor_t.pth')
+    torch.save(agent.critic_target.state_dict(), f'{directory}/{filename}_critic_t.pth')
 
 
-def td3_train(agent, env, rng, action_dim, n_episodes=3600, save_every=10):
+def td3_train(agent, env, rng, directory, name_to_save, action_dim, n_episodes=3000, save_every=10):
     scores_deque = deque(maxlen=100)
     scores_array = []
     avg_scores_array = []
@@ -209,7 +210,7 @@ def td3_train(agent, env, rng, action_dim, n_episodes=3600, save_every=10):
 
         if timestep_after_last_save >= save_every:
             timestep_after_last_save %= save_every
-            save(agent, 'checkpnt_seed_88', 'Models')
+            save(agent, directory, name_to_save)
 
         if len(scores_deque) == 100 and np.mean(scores_deque) >= 300.5:
             print('Environment solved with Average Score: ', np.mean(scores_deque))
@@ -246,7 +247,15 @@ def play(env, agent, n_episodes):
               .format(i_episode, np.mean(scores_deque), score, s // 3600, s % 3600 // 60, s % 60))
 
 
-def main(task_name):
+def load_model_2_agent(agent: TD3, directory, filename):
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    agent.actor.state_dict(torch.load(f'{directory}/{filename}_actor.pth', map_location=device))
+    agent.critic.state_dict(torch.load(f'{directory}/{filename}_critic.pth', map_location=device))
+    agent.actor_target.state_dict(torch.load( f'{directory}/{filename}_actor_t.pth' ,map_location=device))
+    agent.critic_target.state_dict(torch.load(f'{directory}/{filename}_critic_t.pth',map_location=device))
+
+
+def main(task_name, load_model, directory):
     # 'BipedalWalkerHardcore-v3'/BipedalWalker-v3
     env = gym.make(task_name)
     # Set seeds
@@ -260,8 +269,18 @@ def main(task_name):
     max_action = float(env.action_space.high[0])
     agent = TD3(state_dim, action_dim, max_action)
 
-    scores, avg_scores = td3_train(agent=agent, env=env, rng=rng, action_dim=action_dim)
-    save(agent, 'chpnt_2022_seed', 'hard_bipedal')
+    if load_model:
+        load_model_2_agent(agent, directory, "bipedal_easy")
+        name_to_save = "bipedal_hard"
+    else:
+        name_to_save = "bipedal_easy"
+
+    scores, avg_scores = td3_train(agent=agent, env=env, rng=rng, action_dim=action_dim, directory=directory, name_to_save=name_to_save)
+    if load_model:
+        save(agent, directory, 'bipedal_hard')
+    else:
+        save(agent, directory, 'bipedal_easy')
+
     print('length of scores: ', len(scores), ', len of avg_scores: ', len(avg_scores))
 
     fig = plt.figure()
@@ -275,4 +294,12 @@ def main(task_name):
 
 
 if __name__ == '__main__':
-    main("BipedalWalker-v3")
+    model_path = "combo_model"
+    if not Path(model_path).is_dir():
+        import os
+
+        os.mkdir(model_path)
+    print("twice")
+    main("BipedalWalker-v3", load_model=False, directory=model_path)
+    main("BipedalWalkerHardcore-v3", load_model=True, directory=model_path)
+
